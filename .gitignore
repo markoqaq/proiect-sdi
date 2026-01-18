@@ -3,6 +3,16 @@ node_modules/
 *.log
 npm-debug.log*
 
+# SSL/TLS Certificates - NEVER COMMIT!
+*.key
+*.crt
+*.pem
+*.p12
+*.pfx
+ssl/
+*/ssl/
+**/ssl/
+
 # Docker
 .docker/
 
