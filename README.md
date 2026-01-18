@@ -210,7 +210,7 @@ proiect-sdi/
 
 ---
 
-## Concepte Sisteme Distribuite
+## Concepte
 
 - **Message Queue Pattern** - RabbitMQ pentru comunicare asincronă
 - **Microservices** - Servicii independente și specializate
@@ -219,7 +219,3 @@ proiect-sdi/
 - **Service Discovery** - Docker DNS pentru comunicare între servicii
 
 ---
-
-## Autor
-
-Proiect academic pentru cursul de **Sisteme Distribuite**.
