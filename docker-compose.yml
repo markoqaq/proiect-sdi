@@ -1,0 +1,143 @@
+version: '3.8'
+
+services:
+  # Message Broker - RabbitMQ
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: admin123
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - streaming-network
+
+  # Storage Service - MinIO (S3 Compatible)
+  minio:
+    image: minio/minio
+    container_name: minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - streaming-network
+
+  # Ingest Service - WebSocket Server
+  ingest-service:
+    build:
+      context: ./ingest-service
+      dockerfile: Dockerfile
+    container_name: ingest-service
+    ports:
+      - "0.0.0.0:3000:3000"
+      - "0.0.0.0:3001:3001"
+    environment:
+      RABBITMQ_URL: amqp://admin:admin123@rabbitmq:5672
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: 9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin123
+      SSL_CERT: /app/ssl/server.crt
+      SSL_KEY: /app/ssl/server.key
+    volumes:
+      - hls_output:/app/hls_output
+      - ./cdn/ssl:/app/ssl:ro
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - streaming-network
+
+  # Transcoding Worker
+  transcoding-worker:
+    build:
+      context: ./transcoding-worker
+      dockerfile: Dockerfile
+    container_name: transcoding-worker
+    environment:
+      RABBITMQ_URL: amqp://admin:admin123@rabbitmq:5672
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: 9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin123
+    volumes:
+      - hls_output:/app/hls_output
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - streaming-network
+    deploy:
+      replicas: 1
+
+  # API Service - Stream Management
+  api-service:
+    build:
+      context: ./api-service
+      dockerfile: Dockerfile
+    container_name: api-service
+    ports:
+      - "0.0.0.0:8080:8080"
+    environment:
+      RABBITMQ_URL: amqp://admin:admin123@rabbitmq:5672
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: 9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin123
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - streaming-network
+
+  # CDN/Frontend Service - Nginx
+  cdn:
+    build:
+      context: ./cdn
+      dockerfile: Dockerfile
+    container_name: cdn
+    ports:
+      - "0.0.0.0:8081:80"
+      - "0.0.0.0:8443:443"
+    volumes:
+      - hls_output:/usr/share/nginx/html/hls:ro
+    depends_on:
+      - ingest-service
+      - api-service
+    networks:
+      - streaming-network
+
+volumes:
+  rabbitmq_data:
+  minio_data:
+  hls_output:
+
+networks:
+  streaming-network:
+    driver: bridge

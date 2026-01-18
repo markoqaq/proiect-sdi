@@ -1,0 +1,21 @@
+{
+  "name": "ingest-service",
+  "version": "1.0.0",
+  "description": "WebSocket Ingest Service for Live Streaming Platform",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js"
+  },
+  "dependencies": {
+    "ws": "^8.14.2",
+    "amqplib": "^0.10.3",
+    "minio": "^7.1.3",
+    "uuid": "^9.0.1",
+    "express": "^4.18.2",
+    "cors": "^2.8.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  }
+}
