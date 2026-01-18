@@ -287,8 +287,184 @@ Proiect-sdi/
 6. **Horizontal Scaling** - Adăugare dinamică de worker-i
 7. **Service Discovery** - Docker Compose DNS pentru servicii
 
+---
+
+## 🛠️ Tehnologii Utilizate
+
+### Backend & Runtime
+| Tehnologie | Versiune | Utilizare |
+|------------|----------|-----------|
+| **Node.js** | 18-alpine | Runtime JavaScript pentru toate serviciile |
+| **Express.js** | ^4.18.2 | Framework REST API pentru api-service |
+| **WebSocket (ws)** | ^8.14.2 | Comunicare bidirecțională real-time pentru streaming |
+| **amqplib** | ^0.10.3 | Client RabbitMQ pentru Node.js |
+| **minio** | ^7.1.3 | Client S3 pentru upload fișiere în MinIO |
+| **chokidar** | ^3.5.3 | Watcher pentru monitorizare fișiere HLS |
+| **cors** | ^2.8.5 | Middleware CORS pentru Express |
+
+### Video Processing
+| Tehnologie | Utilizare |
+|------------|-----------|
+| **FFmpeg** | Transcodare video WebM → HLS |
+| **HLS (HTTP Live Streaming)** | Protocol de streaming adaptiv |
+| **MediaRecorder API** | Captură video în browser |
+| **getDisplayMedia API** | Screen sharing în browser |
+| **Video.js** | Player HLS în browser |
+
+### Infrastructure & DevOps
+| Tehnologie | Versiune | Utilizare |
+|------------|----------|-----------|
+| **Docker** | Latest | Containerizare servicii |
+| **Docker Compose** | Latest | Orchestrare multi-container |
+| **Nginx** | Alpine | Reverse proxy, CDN, HTTPS termination |
+| **RabbitMQ** | 3-management | Message broker cu management UI |
+| **MinIO** | Latest | Object storage compatibil S3 |
+
+### Frontend
+| Tehnologie | Versiune | Utilizare |
+|------------|----------|-----------|
+| **HTML5/CSS3/JavaScript** | ES6+ | Interfață utilizator |
+| **Bootstrap** | 5.3.2 | Framework CSS responsive |
+| **Video.js** | 8.6.1 | Player video HLS |
+| **Inter Font** | Google Fonts | Tipografie modernă |
+
+### Security
+| Tehnologie | Utilizare |
+|------------|-----------|
+| **OpenSSL** | Generare certificate SSL self-signed |
+| **HTTPS/WSS** | Conexiuni securizate (necesar pentru getDisplayMedia) |
+
+---
+
+## 📝 Procesul de Dezvoltare
+
+### Faza 1: Arhitectura și Design
+1. Definirea cerințelor: streaming live de pe browser către spectatori multipli
+2. Alegerea arhitecturii microservicii pentru scalabilitate
+3. Selectarea tehnologiilor potrivite pentru fiecare componentă
+
+### Faza 2: Implementare Servicii
+
+#### Ingest Service (WebSocket + FFmpeg)
+```javascript
+// Primește chunks video prin WebSocket
+// Pipe-ează datele către FFmpeg pentru conversie
+// FFmpeg generează segmente HLS (.ts) și playlist (.m3u8)
+// Publică evenimente pe RabbitMQ fanout exchange
+```
+
+#### Transcoding Worker
+```javascript
+// Ascultă directorul HLS cu chokidar
+// Detectează fișiere noi (.ts, .m3u8)
+// Upload automat către MinIO S3
+// Consumă mesaje din RabbitMQ
+```
+
+#### API Service
+```javascript
+// REST API cu Express.js
+// Menține lista stream-urilor active
+// Consumă evenimente de la RabbitMQ (exclusive queue)
+// Endpoint-uri pentru listare și management
+```
+
+#### CDN (Nginx)
+```nginx
+# Servește frontend static
+# Proxy pentru API (/api/)
+# Servește fișiere HLS cu CORS headers
+# HTTPS termination cu certificate SSL
+```
+
+### Faza 3: Integrare și Networking
+1. Docker Compose pentru orchestrare
+2. Network intern Docker pentru comunicare servicii
+3. Binding pe 0.0.0.0 pentru acces din rețea
+4. HTTPS cu certificate self-signed pentru getDisplayMedia
+
+### Faza 4: RabbitMQ Architecture
+```
+Initial: Queue simplă → Problemă: doar un consumer primea mesajele
+
+Soluție: Fanout Exchange
+┌─────────────────────────────────────────────────────┐
+│            stream_events_fanout (exchange)          │
+│                    (fanout type)                    │
+└─────────────────┬──────────────────┬────────────────┘
+                  │                  │
+                  ▼                  ▼
+        ┌─────────────────┐  ┌─────────────────┐
+        │ api_events_xxx  │  │ worker_events   │
+        │ (exclusive)     │  │ (durable)       │
+        └────────┬────────┘  └────────┬────────┘
+                 │                    │
+                 ▼                    ▼
+          API Service          Transcoding Worker
+```
+
+### Faza 5: Frontend Modern
+- Design dark theme cu gradient violet/cyan
+- Text alb pe fundal închis pentru vizibilitate
+- Responsive pentru mobile viewers
+- Consolă pentru debugging în browser
+- Statistici live (durată, bitrate, bytes)
+
+---
+
+## 🖥️ Setup pe Alt Computer
+
+### Cerințe
+- Docker Desktop instalat și pornit
+- Git instalat
+- Conexiune în aceeași rețea (pentru multi-device testing)
+
+### Pași Rapizi
+
+```powershell
+# 1. Clonează repository-ul
+git clone https://github.com/markoqaq/proiect-sdi.git
+cd proiect-sdi
+
+# 2. Află IP-ul local
+(Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.InterfaceAlias -notlike "*Loopback*" -and $_.PrefixOrigin -eq "Dhcp" }).IPAddress
+
+# 3. Generează certificate SSL (înlocuiește YOUR_IP cu IP-ul de mai sus)
+New-Item -ItemType Directory -Force -Path ssl
+openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout ssl/server.key -out ssl/server.crt -subj "/CN=localhost" -addext "subjectAltName=IP:YOUR_IP,DNS:localhost"
+
+# 4. Copiază certificatele
+Copy-Item -Recurse -Force ssl cdn/
+Copy-Item -Recurse -Force ssl ingest-service/
+
+# 5. Pornește toate serviciile
+docker-compose up --build -d
+
+# 6. Verifică că totul rulează
+docker-compose ps
+```
+
+### Accesare
+- **Browser local**: https://localhost:8443 (acceptă certificatul)
+- **Din rețea**: https://YOUR_IP:8443
+
+### Troubleshooting
+```powershell
+# Vezi loguri
+docker-compose logs -f
+
+# Restart complet
+docker-compose down
+docker-compose up --build -d
+
+# Verifică stream-uri active
+curl -k https://localhost:8443/api/streams
+```
+
+---
+
 ## 📄 Licență
 
 Proiect academic pentru cursul de Sisteme Distribuite.
-#   p r o i e c t - s d i  
+ 
  
